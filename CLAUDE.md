@@ -18,11 +18,15 @@
 > Если стек меняется — сначала запись в `docs/DECISIONS.md`, потом правка этого файла.
 
 ## Команды
-<!-- Агент: заполни этот раздел после создания каркаса и держи его актуальным -->
-- Запуск всего: `docker compose up --build`
-- Тесты backend: `...`
-- Миграции: `...`
-- E2E: `...`
+- Запуск всего: `docker compose up --build` → фронтенд http://localhost:8080, API http://localhost:3000/api (health: `/api/health`), Mailpit http://localhost:8025, PostgreSQL `localhost:5433` (parking/parking).
+- Остановить и стереть данные: `docker compose down -v`
+- Тесты backend (в `backend/`):
+  - юнит: `npm test`
+  - e2e (supertest, реальный PostgreSQL): `npm run test:e2e` — сам поднимает `postgres:16-alpine` через testcontainers (нужен Docker); с БД из compose: `DATABASE_URL=postgres://parking:parking@localhost:5433/parking npm run test:e2e`
+- Lint / сборка: `npm run lint`, `npm run build` (и в `backend/`, и в `frontend/`)
+- Миграции: применяются автоматически при старте backend (worker их не запускает). Вручную, в `backend/` с заданным `DATABASE_URL`: `npm run migration:run` / `migration:revert` / `migration:show`. Новая: `npm run migration:create -- src/database/migrations/<Name>`, затем добавить класс в `src/database/migrations/index.ts` (список явный).
+- Разработка без Docker для приложений: `docker compose up -d postgres mailpit`; `cd backend && cp .env.example .env && npm run start:dev` (API) и `npm run start:worker:dev` (worker); `cd frontend && npm run dev` (Vite проксирует `/api` на :3000).
+- E2E (Playwright): ещё нет — появится вместе с UI схемы парковки.
 
 ## Архитектурные принципы (не нарушать)
 1. **Деньги только целыми копейками.** В БД — `integer` (не `bigint`: драйвер pg отдаёт bigint строкой) или `bigint` с явным трансформером в number. Никаких float, никаких `0.1 + 0.2` в расчётах.

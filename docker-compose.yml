@@ -1,0 +1,65 @@
+name: parking
+
+x-backend-env: &backend-env
+  DATABASE_URL: postgres://parking:parking@postgres:5432/parking
+  PORT: "3000"
+  WORKER_POLL_MS: "5000"
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: parking
+      POSTGRES_USER: parking
+      POSTGRES_PASSWORD: parking
+    ports:
+      # 5433 on the host to avoid clashing with a local PostgreSQL.
+      - "5433:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U parking -d parking"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  mailpit:
+    image: axllent/mailpit:v1.31.4
+    ports:
+      - "8025:8025" # web UI
+      - "1025:1025" # SMTP
+
+  backend:
+    build: ./backend
+    environment: *backend-env
+    ports:
+      - "3000:3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3000/api/health || exit 1"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+      start_period: 5s
+
+  worker:
+    build: ./backend
+    command: ["node", "dist/main.worker.js"]
+    environment: *backend-env
+    depends_on:
+      # The API applies migrations on start; the worker waits for it.
+      backend:
+        condition: service_healthy
+
+  frontend:
+    build: ./frontend
+    ports:
+      - "8080:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+
+volumes:
+  pgdata:
