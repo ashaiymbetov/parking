@@ -31,7 +31,11 @@ services:
 
   backend:
     build: ./backend
-    environment: *backend-env
+    environment:
+      <<: *backend-env
+      # Demo users (operator@ / driver1@ / driver2@parking.local, password
+      # parking123). Idempotent; remove for a clean database.
+      SEED_DEMO: "true"
     ports:
       - "3000:3000"
     depends_on:

@@ -27,3 +27,25 @@ describe('validateEnv', () => {
     );
   });
 });
+
+describe('validateEnv: SEED_DEMO', () => {
+  const url = 'postgres://u:p@localhost:5432/db';
+
+  it.each([
+    [undefined, false],
+    ['true', true],
+    ['1', true],
+    ['false', false],
+    ['0', false],
+  ])('SEED_DEMO=%s → %s', (raw, expected) => {
+    expect(validateEnv({ DATABASE_URL: url, SEED_DEMO: raw }).SEED_DEMO).toBe(
+      expected,
+    );
+  });
+
+  it('rejects anything else', () => {
+    expect(() => validateEnv({ DATABASE_URL: url, SEED_DEMO: 'yes' })).toThrow(
+      /SEED_DEMO/,
+    );
+  });
+});
