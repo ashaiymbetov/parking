@@ -81,9 +81,18 @@ describe('schema: invariants under concurrent transactions', () => {
     );
 
     expect(results.filter((r) => r.status === 'fulfilled')).toHaveLength(1);
-    expect(rejectionCodes(results)).toEqual(
-      Array(PARALLEL - 1).fill('23P01 bookings_no_overlap_per_spot'),
-    );
+    // Concurrent inserts into an exclusion constraint wait on each other's
+    // uncommitted rows; PostgreSQL resolves some of those waits as a
+    // deadlock (40P01) instead of an exclusion violation (23P01). Both mean
+    // "rejected", and the booking service must map both to a conflict (D-024).
+    const codes = rejectionCodes(results);
+    expect(codes).toHaveLength(PARALLEL - 1);
+    for (const code of codes) {
+      expect([
+        '23P01 bookings_no_overlap_per_spot',
+        '40P01 undefined',
+      ]).toContain(code);
+    }
     const stored = await setup.query<{ n: number }>(
       `SELECT count(*)::int AS n FROM bookings WHERE spot_id = $1 AND status = 'confirmed'`,
       [spot],
