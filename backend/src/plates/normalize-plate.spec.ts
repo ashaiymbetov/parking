@@ -23,6 +23,8 @@ describe('normalizePlate (CLAUDE.md, principle 8)', () => {
     ['Cyrillic Ё', 'Ё123'],
     ['punctuation', 'A123.BC'],
     ['emoji', 'A123🚗'],
+    ['ß (upper-cases to two letters)', 'Aß123'],
+    ['dotless ı (upper-cases to I)', 'Aı123'],
     ['too long', 'A'.repeat(16)],
   ])('rejects %s', (_case, raw) => {
     expect(normalizePlate(raw)).toBeNull();

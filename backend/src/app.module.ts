@@ -4,6 +4,7 @@ import { ClockModule } from './clock/clock.module';
 import { AppConfigModule } from './config/app-config.module';
 import { DatabaseModule } from './database/database.module';
 import { HealthModule } from './health/health.module';
+import { ProfileModule } from './profile/profile.module';
 import { SeedModule } from './seed/seed.module';
 
 @Module({
@@ -14,6 +15,7 @@ import { SeedModule } from './seed/seed.module';
     HealthModule,
     SeedModule,
     AuthModule,
+    ProfileModule,
   ],
 })
 export class AppModule {}
