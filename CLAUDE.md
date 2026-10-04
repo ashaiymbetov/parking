@@ -26,6 +26,7 @@
 - Lint / сборка: `npm run lint`, `npm run build` (и в `backend/`, и в `frontend/`)
 - Миграции: применяются автоматически при старте backend (worker их не запускает). Вручную, в `backend/` с заданным `DATABASE_URL`: `npm run migration:run` / `migration:revert` / `migration:show`. Новая: `npm run migration:create -- src/database/migrations/<Name>`, затем добавить класс в `src/database/migrations/index.ts` (список явный).
 - Разработка без Docker для приложений: `docker compose up -d postgres mailpit`; `cd backend && cp .env.example .env && npm run start:dev` (API) и `npm run start:worker:dev` (worker); `cd frontend && npm run dev` (Vite проксирует `/api` на :3000).
+- Демо-данные: создаются при старте backend, если `SEED_DEMO=true` (в compose включено); вручную — `npm run seed` в `backend/` (нужны `DATABASE_URL` и применённые миграции). Учётки: `operator@parking.local`, `driver1@parking.local`, `driver2@parking.local`, пароль `parking123`.
 - E2E (Playwright): ещё нет — появится вместе с UI схемы парковки.
 
 ## Архитектурные принципы (не нарушать)

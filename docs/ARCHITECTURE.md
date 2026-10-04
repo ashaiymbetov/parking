@@ -54,6 +54,7 @@ flowchart LR
 | Краевой случай | Как закрываем |
 |---|---|
 | Гонка «проверили — свободно — вставили» в двух транзакциях | `EXCLUDE USING gist (spot_id WITH =, period WITH &&)` — вторая транзакция получает `23P01`, API отдаёт 409 `BOOKING_CONFLICT` (D-002). |
+| Параллельные вставки в EXCLUDE-ограничение | PostgreSQL может отклонить проигравшую транзакцию как `40P01 deadlock_detected`, а не `23P01` (проверено тестом `concurrency.e2e-spec.ts`). Сервис броней трактует оба кода как конфликт → 409 (D-024). |
 | Смежные брони 10:00–11:00 и 11:00–12:00 | `tstzrange` полуоткрытый `[)`, пересечения нет — обе проходят. |
 | Отменённая / no-show / завершённая бронь не должна блокировать место | Ограничение частичное: `WHERE (status IN ('confirmed','checked_in'))`. |
 | Одна машина бронирует два места на одно время | Второе ограничение `EXCLUDE (car_id WITH =, period WITH &&)` с тем же условием → 409 `CAR_ALREADY_BOOKED` (D-009). |
@@ -134,38 +135,46 @@ flowchart LR
 
 ### Таблицы
 
-**users** — `id`, `email citext UNIQUE`, `password_hash`, `role` (`driver` | `operator`), `created_at`.
+Схема создаётся миграциями в `backend/src/database/migrations/` (ручной SQL). Статусы — `text` + `CHECK`, все ограничения именованы (D-023): тесты в `backend/test/schema/` проверяют, что сработало именно нужное.
 
-**cars** — `id`, `user_id → users`, `plate` (нормализованный) `UNIQUE`, `created_at`.
-`CHECK (plate ~ '^[A-Z0-9]+$')`. Номер принадлежит максимум одному профилю (D-005).
+**users** — `id`, `email citext`, `password_hash` (scrypt, D-022), `role`, `created_at`.
+`users_email_key UNIQUE (email)` (без учёта регистра), `users_role_check` (`driver` | `operator`).
 
-**spots** — `id`, `code UNIQUE` (A01…), `row`, `col` (позиция на схеме), `is_active`.
+**cars** — `id`, `user_id → users ON DELETE CASCADE`, `plate`, `created_at`.
+`cars_plate_key UNIQUE (plate)` — номер принадлежит максимум одному профилю (D-005); `cars_plate_format_check (plate ~ '^[A-Z0-9]{1,15}$')` — хранится только нормализованный номер.
 
-**tariffs** — `id`, `valid_during tstzrange`, `timezone`, `day_starts_at time` (07:00), `night_starts_at time` (23:00), `day_price_kop int`, `night_price_kop int`.
-`EXCLUDE USING gist (valid_during WITH &&)` — версии тарифа не перекрываются. `CHECK (day_price_kop >= 0 AND night_price_kop >= 0)`.
+**spots** — `id`, `code`, `row`, `col` (позиция на схеме), `is_active`.
+`spots_code_key UNIQUE (code)`, `spots_row_col_key UNIQUE (row, col)`. Миграция `SeedReferenceData` создаёт 20 мест A01–A10, B01–B10 (D-021).
+
+**tariffs** — `id`, `valid_during tstzrange`, `timezone`, `day_starts_at time`, `night_starts_at time`, `day_price_kop int`, `night_price_kop int`, `created_at`.
+`tariffs_no_overlap EXCLUDE USING gist (valid_during WITH &&)` — версии не перекрываются; `tariffs_prices_check` (≥ 0), `tariffs_day_night_check`, `tariffs_valid_during_check` (не пустой). Начальная версия: с 2020-01-01, `Asia/Bishkek`, день 07:00 — 250 коп/мин, ночь 23:00 — 120 коп/мин.
 
 **bookings** — `id`, `user_id`, `car_id`, `spot_id`, `period tstzrange '[)'`, `status`, `checked_in_at`, `released_at`, `cancelled_at`, `created_at`.
-- `EXCLUDE USING gist (spot_id WITH =, period WITH &&) WHERE (status IN ('confirmed','checked_in'))`
-- `EXCLUDE USING gist (car_id WITH =, period WITH &&) WHERE (status IN ('confirmed','checked_in'))`
-- `CHECK (NOT isempty(period) AND lower_inc(period) AND NOT upper_inc(period))`
-- `CHECK (date_trunc('minute', lower(period)) = lower(period) AND date_trunc('minute', upper(period)) = upper(period))`
-- индекс `(status, lower(period))` и `(status, upper(period))` — для выборок worker'а.
+- `bookings_no_overlap_per_spot EXCLUDE USING gist (spot_id WITH =, period WITH &&) WHERE (status IN ('confirmed','checked_in'))`
+- `bookings_no_overlap_per_car EXCLUDE USING gist (car_id WITH =, period WITH &&) WHERE (…то же…)`
+- `bookings_period_bounds_check`: не пустой, конечный, `[start, end)`
+- `bookings_period_minute_check`: `mod(extract(epoch FROM lower(period)), 60) = 0` (и для `upper`) — выражение не зависит от `TimeZone` сессии, в отличие от `date_trunc`
+- `bookings_status_check`; индексы `(status, lower(period))`, `(status, upper(period))` — для выборок worker'а.
 
-**visits** — `id`, `plate`, `car_id NULL`, `user_id NULL`, `spot_id`, `booking_id NULL UNIQUE`, `entered_at`, `exited_at NULL`, `close_reason` (`exit` | `forced`).
-- `UNIQUE (plate) WHERE exited_at IS NULL` — одна машина не внутри дважды.
-- `UNIQUE (spot_id) WHERE exited_at IS NULL` — одно место не под двумя машинами.
-- `CHECK (exited_at IS NULL OR exited_at >= entered_at)`.
+**visits** — `id`, `plate`, `car_id NULL`, `user_id NULL`, `spot_id`, `booking_id NULL`, `entered_at`, `exited_at NULL`, `close_reason`, `created_at`. Визит открыт, пока `exited_at IS NULL`.
+- `visits_one_open_per_plate`: `UNIQUE INDEX (plate) WHERE exited_at IS NULL` — одна машина не внутри дважды.
+- `visits_one_open_per_spot`: `UNIQUE INDEX (spot_id) WHERE exited_at IS NULL` — одно место не под двумя машинами.
+- `visits_booking_id_key UNIQUE (booking_id)`, `visits_plate_format_check`, `visits_exit_after_entry_check`, `visits_close_reason_check` (открыт ⇔ причины нет; закрыт ⇔ `exit` | `forced`).
 
-**invoices** — `id`, `visit_id UNIQUE`, `minutes int`, `amount_kop int`, `breakdown jsonb` (сегменты: версия тарифа, день/ночь, минуты, цена, сумма), `created_at`. Счёт создаётся в той же транзакции, что и закрытие визита. Оплата эмулируется: счёт при выезде считается оплаченным на терминале шлагбаума (D-013).
+**invoices** — `id`, `visit_id`, `minutes int`, `amount_kop int`, `breakdown jsonb` (сегменты: версия тарифа, день/ночь, минуты, цена, сумма), `created_at`.
+`invoices_visit_id_key UNIQUE (visit_id)`, `invoices_amounts_check` (≥ 0). Счёт создаётся в той же транзакции, что и закрытие визита. Оплата эмулируется (D-013).
 
-**gate_events** — журнал каждого обращения к шлагбауму: `id`, `kind` (`entry` | `exit`), `raw_plate`, `plate`, `occurred_at`, `idempotency_key UNIQUE NULL`, `outcome` (`ok` | `rejected`), `error_code`, `response jsonb`, `visit_id NULL`.
+**gate_events** — журнал каждого обращения к шлагбауму: `id`, `kind`, `raw_plate`, `plate NULL` (нормализованный, если удалось), `occurred_at`, `idempotency_key NULL`, `outcome`, `error_code`, `response jsonb`, `visit_id NULL`.
+`gate_events_idempotency_key_key UNIQUE (idempotency_key)`, `gate_events_kind_check` (`entry` | `exit`), `gate_events_outcome_check` (`ok` | `rejected`), `gate_events_plate_format_check`.
 
 **anomalies** — `id`, `kind`, `plate NULL`, `gate_event_id NULL`, `booking_id NULL`, `details jsonb`, `created_at`.
-Виды: `exit_without_entry`, `double_entry`, `no_free_spot`, `invalid_plate`, `booked_spot_occupied`, `reminder_missed`.
+`anomalies_kind_check`: `exit_without_entry`, `double_entry`, `no_free_spot`, `invalid_plate`, `booked_spot_occupied`, `reminder_missed`.
 
-**email_outbox** — `id`, `booking_id`, `kind` (`reminder` | `no_show`), `to_email`, `status` (`pending` | `sent` | `failed` | `skipped`), `attempts`, `next_attempt_at`, `sent_at`, `last_error`, `created_at`. `UNIQUE (booking_id, kind)`.
+**email_outbox** — `id`, `booking_id`, `kind`, `to_email citext`, `status` (по умолчанию `pending`), `attempts`, `next_attempt_at`, `sent_at`, `last_error`, `created_at`.
+`email_outbox_booking_kind_key UNIQUE (booking_id, kind)` — второе письмо того же вида не создать; `email_outbox_kind_check` (`reminder` | `no_show`), `email_outbox_status_check` (`pending` | `sent` | `failed` | `skipped`), `email_outbox_attempts_check`. Частичный индекс по `next_attempt_at` для `pending`.
 
-**spot_state** — снапшот последнего разосланного состояния: `spot_id PK`, `state` (`free` | `booked` | `occupied`), `version bigint`, `updated_at`.
+**spot_state** — снапшот последнего разосланного состояния: `spot_id PK → spots ON DELETE CASCADE`, `state`, `version bigint`, `updated_at`.
+`spot_state_state_check` (`free` | `booked` | `occupied`), `spot_state_version_check` (≥ 0).
 
 ### Состояния брони
 
