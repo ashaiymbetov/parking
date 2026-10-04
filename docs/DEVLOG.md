@@ -44,6 +44,28 @@
 
 ---
 
+## [2026-10-04 14:01] Этап 2 — каркас
+**Сделано:**
+- Backend сгенерирован Nest CLI 11, frontend — шаблоном Vite `react-ts`; вывод генераторов закоммичен отдельно (D-016).
+- Backend: проверка env при старте, общий DataSource (synchronize выключен, миграции явным списком, применяет API), первая миграция — расширения `btree_gist`/`citext`, `Clock` как провайдер NestJS (`SystemClock`/`FakeClock`), `GET /api/health` (200/503).
+- Worker: `main.worker.ts`, standalone context, цикл опроса БД, корректная остановка по SIGTERM.
+- Frontend: страница статуса на TanStack Query, в Docker — nginx с прокси `/api` и `/socket.io`.
+- `docker-compose.yml`: postgres, mailpit, backend, worker, frontend с healthcheck'ами и порядком старта.
+- README (статус, запуск, таблица доказательств), раздел «Команды» в CLAUDE.md.
+
+**Решения:** D-016…D-020.
+
+**Проблемы / поправки агента:**
+- Nest CLI 12 генерирует ESM + Vitest + oxlint вместо Jest; пакеты `@nestjs/config`/`@nestjs/typeorm` линии 12 — только ESM, Jest их не грузит. Агент перешёл на Nest 11 (CommonJS + Jest), записано в D-017.
+- Первый запуск compose упал: `PORT`/`WORKER_POLL_MS` из env приходят строками, а без явной аннотации типа class-transformer их не приводил к числу. Локальные тесты этого не ловили (значения по умолчанию). Исправлено, добавлен юнит-тест (`fix: coerce numeric env vars from strings`).
+- В песочнице агента `npm ci` внутри `docker build` не ходит в сеть без прокси, поэтому образы для проверки собирались из временных копий Dockerfile с прокси и CA песочницы (в репозиторий не попали), затем `docker compose up --no-build`. На обычной машине нужен только `docker compose up --build`.
+
+**Тесты:** backend unit — 8/8, e2e — 3/3 (testcontainers и БД из compose). Ручная проверка compose с нуля: `/api/health` 200 напрямую и через nginx, фронтенд в headless Chromium показывает «API: ok, БД: up», Mailpit :8025 отвечает, миграция записана в `migrations`, worker тикает и выходит с кодом 0 по SIGTERM.
+
+**Дальше:** первые доменные миграции (места, машины, брони с EXCLUDE) и тесты на инварианты.
+
+---
+
 <!-- Шаблон записи:
 
 ## [ГГГГ-ММ-ДД ЧЧ:ММ] Этап N — название
