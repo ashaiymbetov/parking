@@ -4,6 +4,7 @@ import { CreateSpotsAndTariffs1791106421000 } from './1791106421000-CreateSpotsA
 import { CreateBookings1791106422000 } from './1791106422000-CreateBookings';
 import { CreateVisitsAndInvoices1791106423000 } from './1791106423000-CreateVisitsAndInvoices';
 import { CreateJournalsAndOutbox1791106424000 } from './1791106424000-CreateJournalsAndOutbox';
+import { SeedReferenceData1791106425000 } from './1791106425000-SeedReferenceData';
 
 /**
  * Explicit list instead of a glob: works the same under ts-jest, ts-node and
@@ -16,4 +17,5 @@ export const migrations = [
   CreateBookings1791106422000,
   CreateVisitsAndInvoices1791106423000,
   CreateJournalsAndOutbox1791106424000,
+  SeedReferenceData1791106425000,
 ];
