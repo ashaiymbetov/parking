@@ -6,6 +6,7 @@ import { PostgreSqlContainer } from '@testcontainers/postgresql';
  * - otherwise → start a throwaway container via testcontainers.
  */
 export default async function globalSetup(): Promise<void> {
+  process.env.JWT_SECRET ??= 'test-only-jwt-secret-0123456789';
   if (process.env.DATABASE_URL) {
     return;
   }
