@@ -3,6 +3,7 @@ import { ClockModule } from './clock/clock.module';
 import { AppConfigModule } from './config/app-config.module';
 import { DatabaseModule } from './database/database.module';
 import { HealthModule } from './health/health.module';
+import { SeedModule } from './seed/seed.module';
 
 @Module({
   imports: [
@@ -10,6 +11,7 @@ import { HealthModule } from './health/health.module';
     ClockModule,
     DatabaseModule.forRoot({ runMigrations: true }),
     HealthModule,
+    SeedModule,
   ],
 })
 export class AppModule {}
