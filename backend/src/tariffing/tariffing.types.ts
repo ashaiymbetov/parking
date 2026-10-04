@@ -51,7 +51,11 @@ export interface Charge {
 }
 
 export type TariffingErrorCode =
-  'EXIT_BEFORE_ENTRY' | 'NO_TARIFF' | 'INVALID_TIME_ZONE' | 'INVALID_TARIFF';
+  | 'INVALID_TIME'
+  | 'EXIT_BEFORE_ENTRY'
+  | 'NO_TARIFF'
+  | 'INVALID_TIME_ZONE'
+  | 'INVALID_TARIFF';
 
 export class TariffingError extends Error {
   constructor(

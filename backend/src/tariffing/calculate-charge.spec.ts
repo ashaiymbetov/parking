@@ -239,6 +239,47 @@ describe('calculateCharge — examples (ARCHITECTURE §6, D-003)', () => {
     });
   });
 
+  describe('a boundary inside a DST transition (generic tariffs)', () => {
+    // Not the case for 07:00/23:00, but the function must stay correct for
+    // any boundary: here the day starts at 02:30 and the night at 14:00.
+    const early = tariff({
+      validFrom: at('2020-01-01T00:00', BERLIN),
+      dayStartsAt: '02:30',
+      nightStartsAt: '14:00',
+    });
+
+    it('a skipped boundary (02:30 on 2026-03-29) switches at the jump itself', () => {
+      // Clocks go 02:00 CET → 03:00 CEST at 01:00Z; 03:00 is already "after 02:30".
+      const r = charge(
+        '2026-03-29T01:00:00',
+        '2026-03-29T04:00:00',
+        [early],
+        BERLIN,
+      );
+      expect(runs(r)).toEqual([
+        { kind: 'night', minutes: 60, amountKop: 7_200 },
+        { kind: 'day', minutes: 60, amountKop: 15_000 },
+      ]);
+      expect(r.segments[1].from.toISOString()).toBe('2026-03-29T01:00:00.000Z');
+    });
+
+    it('a repeated boundary (02:30 twice on 2026-10-25) is crossed twice', () => {
+      // 01:30 CEST → 03:30 CET = 3 real hours; local 02:00–03:00 happens twice.
+      const r = calculateCharge({
+        enteredAt: new Date('2026-10-24T23:30:00Z'), // 01:30 CEST
+        exitedAt: new Date('2026-10-25T02:30:00Z'), // 03:30 CET
+        tariffs: [early],
+        timeZone: BERLIN,
+      });
+      expect(runs(r)).toEqual([
+        { kind: 'night', minutes: 60, amountKop: 7_200 }, // 01:30–02:30 CEST
+        { kind: 'day', minutes: 30, amountKop: 7_500 }, // 02:30–03:00 CEST
+        { kind: 'night', minutes: 30, amountKop: 3_600 }, // 02:00–02:30 CET
+        { kind: 'day', minutes: 60, amountKop: 15_000 }, // 02:30–03:30 CET
+      ]);
+    });
+  });
+
   describe('invalid input fails loudly', () => {
     function errorCode(fn: () => unknown): string | undefined {
       try {
@@ -255,6 +296,19 @@ describe('calculateCharge — examples (ARCHITECTURE §6, D-003)', () => {
       expect(
         errorCode(() => charge('2026-10-04T10:00:00', '2026-10-04T09:59:59')),
       ).toBe('EXIT_BEFORE_ENTRY');
+    });
+
+    it('an invalid date', () => {
+      expect(
+        errorCode(() =>
+          calculateCharge({
+            enteredAt: new Date('not a date'),
+            exitedAt: at('2026-10-04T11:00'),
+            tariffs: [tariff()],
+            timeZone: BISHKEK,
+          }),
+        ),
+      ).toBe('INVALID_TIME');
     });
 
     it('a minute with no valid tariff version', () => {

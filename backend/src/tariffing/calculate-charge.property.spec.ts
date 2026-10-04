@@ -24,6 +24,8 @@ const BOUNDARIES: ReadonlyArray<[string, string]> = [
   ['06:00', '22:00'],
   // Day "starts" late in the evening and wraps past midnight.
   ['22:00', '06:00'],
+  // Inside the DST gap / repeated hour of Berlin, New York, Lord Howe.
+  ['02:15', '14:00'],
 ];
 
 const YEAR_2026 = Date.UTC(2026, 0, 1);
@@ -89,6 +91,35 @@ const visit: fc.Arbitrary<ChargeInput> = fc
       timeZone,
     })),
   );
+
+/**
+ * Visits around real 2026 DST transitions: random entry/exit rarely hit
+ * them, so a dedicated generator makes sure every run exercises them.
+ */
+const DST_TRANSITIONS: ReadonlyArray<[(typeof ZONES)[number], string]> = [
+  ['Europe/Berlin', '2026-03-29T01:00:00Z'], // 02:00 CET → 03:00 CEST
+  ['Europe/Berlin', '2026-10-25T01:00:00Z'], // 03:00 CEST → 02:00 CET
+  ['America/New_York', '2026-03-08T07:00:00Z'],
+  ['America/New_York', '2026-11-01T06:00:00Z'],
+  ['Australia/Lord_Howe', '2026-04-04T15:00:00Z'], // −30 min
+  ['Australia/Lord_Howe', '2026-10-03T15:30:00Z'], // +30 min
+];
+
+const visitAroundDst: fc.Arbitrary<ChargeInput> = fc
+  .tuple(
+    fc.constantFrom(...DST_TRANSITIONS),
+    fc.integer({ min: -DAY, max: DAY }),
+    fc.integer({ min: 0, max: DAY }),
+  )
+  .chain(([[timeZone, transition], shift, duration]) => {
+    const entry = Date.parse(transition) + shift;
+    return tariffsAround(entry).map((tariffs) => ({
+      enteredAt: new Date(entry),
+      exitedAt: new Date(entry + duration),
+      tariffs,
+      timeZone,
+    }));
+  });
 
 // ---------------------------------------------------------------------------
 // Reference model: price every billed minute separately, by its start.
@@ -192,6 +223,23 @@ describe('calculateCharge — properties (fast-check)', () => {
           })),
         ).toEqual(expected);
         expect(r.amountKop).toBe(sum(expected.map((e) => e.amountKop)));
+      }),
+      { numRuns: 300 },
+    );
+  });
+
+  it('matches minute-by-minute pricing around DST transitions', () => {
+    fc.assert(
+      fc.property(visitAroundDst, (input) => {
+        const r = calculateCharge(input);
+        expect(
+          r.segments.map(({ tariffId, kind, minutes, amountKop }) => ({
+            tariffId,
+            kind,
+            minutes,
+            amountKop,
+          })),
+        ).toEqual(referenceRuns(input));
       }),
       { numRuns: 300 },
     );

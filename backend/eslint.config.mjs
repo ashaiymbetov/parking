@@ -32,4 +32,19 @@ export default tseslint.config(
       "prettier/prettier": ["error", { endOfLine: "auto" }],
     },
   },
+  {
+    // Tariff calculation is a pure function: no framework, no database, no I/O.
+    files: ['src/tariffing/**/*.ts'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            { group: ['@nestjs/*', 'typeorm', 'pg', 'node:*', 'fs', 'http', 'https'], message: 'src/tariffing must stay pure (CLAUDE.md, principle 9).' },
+            { group: ['../*'], message: 'src/tariffing must not depend on the rest of the app.' },
+          ],
+        },
+      ],
+    },
+  },
 );
