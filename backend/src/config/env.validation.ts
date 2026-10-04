@@ -1,3 +1,4 @@
+import 'reflect-metadata';
 import { plainToInstance } from 'class-transformer';
 import {
   IsInt,
@@ -16,11 +17,11 @@ export class EnvironmentVariables {
   @IsInt()
   @Min(1)
   @Max(65535)
-  PORT = 3000;
+  PORT: number = 3000;
 
   @IsInt()
   @Min(100)
-  WORKER_POLL_MS = 5000;
+  WORKER_POLL_MS: number = 5000;
 }
 
 /** Fails fast on startup if the environment is incomplete or malformed. */
