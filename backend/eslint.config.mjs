@@ -33,6 +33,16 @@ export default tseslint.config(
     },
   },
   {
+    // HTTP tests assert on supertest's `res.body`, which is typed `any`.
+    files: ['test/**/*.ts'],
+    rules: {
+      '@typescript-eslint/no-unsafe-assignment': 'off',
+      '@typescript-eslint/no-unsafe-member-access': 'off',
+      '@typescript-eslint/no-unsafe-call': 'off',
+      '@typescript-eslint/no-unsafe-argument': 'off',
+    },
+  },
+  {
     // Tariff calculation is a pure function: no framework, no database, no I/O.
     files: ['src/tariffing/**/*.ts'],
     rules: {

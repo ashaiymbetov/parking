@@ -3,6 +3,8 @@ import { plainToInstance, Transform } from 'class-transformer';
 import {
   IsBoolean,
   IsInt,
+  IsOptional,
+  MinLength,
   IsNotEmpty,
   IsString,
   Max,
@@ -23,6 +25,21 @@ export class EnvironmentVariables {
   @IsInt()
   @Min(100)
   WORKER_POLL_MS: number = 5000;
+
+  /** Required by the API (AuthModule), not by the worker. */
+  @IsOptional()
+  @IsString()
+  @MinLength(16)
+  JWT_SECRET?: string;
+
+  @IsInt()
+  @Min(60)
+  JWT_TTL_SECONDS: number = 12 * 60 * 60;
+
+  /** "Starts soon" window: early entry by booking, SPOT_OCCUPIED check. */
+  @IsInt()
+  @Min(0)
+  EARLY_ENTRY_MIN: number = 15;
 
   /** Create demo users on API start (idempotent). Off unless set. */
   @Transform(({ obj, key }) => parseFlag((obj as Record<string, unknown>)[key]))
