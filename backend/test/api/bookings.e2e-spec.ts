@@ -402,13 +402,7 @@ describe('API: bookings', () => {
   });
 
   describe('spots', () => {
-    it('lists the 20 spots of the parking', async () => {
-      const { user } = await driverWithCar();
-      const res = await t.http().get('/api/spots').set(user.auth).expect(200);
-      expect(res.body).toHaveLength(20);
-      expect(res.body[0]).toEqual({ id: spotA01, code: 'A01', row: 1, col: 1 });
-    });
-
+    // GET /api/spots (state, version) — test/api/spots.e2e-spec.ts.
     it('availability excludes spots booked for an overlapping interval', async () => {
       const { user, car } = await driverWithCar();
       await book(user, {

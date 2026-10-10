@@ -38,14 +38,16 @@ export async function createTestApp(now: string): Promise<TestApp> {
 }
 
 /**
- * Removes everything users created; reference data (spots, tariffs,
- * spot_state) stays. API tests commit real rows, so each test starts clean.
+ * Removes everything users created and resets the spot_state snapshot;
+ * reference data (spots, tariffs) stays. API tests commit real rows, so each test starts clean.
  */
 export async function resetDomainData(ds: DataSource): Promise<void> {
   await ds.query(`
     TRUNCATE users, cars, bookings, visits, invoices, gate_events,
              anomalies, email_outbox
     RESTART IDENTITY CASCADE`);
+  // Snapshot back to the state after migrations (free, version 0).
+  await ds.query(`UPDATE spot_state SET state = 'free', version = 0`);
 }
 
 let cachedHash: Promise<string> | undefined;
