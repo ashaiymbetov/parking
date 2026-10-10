@@ -28,7 +28,7 @@
 - Разработка без Docker для приложений: `docker compose up -d postgres mailpit`; `cd backend && cp .env.example .env && npm run start:dev` (API) и `npm run start:worker:dev` (worker); `cd frontend && npm run dev` (Vite проксирует `/api` на :3000).
 - Env backend: `DATABASE_URL`, `JWT_SECRET` (нужен API; в compose — dev-значение), `JWT_TTL_SECONDS`, `EARLY_ENTRY_MIN`, `SEED_DEMO`, `WORKER_POLL_MS` — см. `backend/.env.example`.
 - Демо-данные: создаются при старте backend, если `SEED_DEMO=true` (в compose включено); вручную — `npm run seed` в `backend/` (нужны `DATABASE_URL` и применённые миграции). Учётки: `operator@parking.local`, `driver1@parking.local`, `driver2@parking.local`, пароль `parking123`.
-- E2E (Playwright): ещё нет — появится вместе с UI схемы парковки.
+- E2E (Playwright, один сценарий на две вкладки): в `frontend/` — `npm run test:e2e` против запущенного стека (`E2E_BASE_URL`, по умолчанию http://localhost:8080).
 
 ## Архитектурные принципы (не нарушать)
 1. **Деньги только целыми копейками.** В БД — `integer` (не `bigint`: драйвер pg отдаёт bigint строкой) или `bigint` с явным трансформером в number. Никаких float, никаких `0.1 + 0.2` в расчётах.
