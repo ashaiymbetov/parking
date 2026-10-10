@@ -63,3 +63,34 @@ pre {
   overflow-x: auto;
   font-size: 0.9rem;
 }
+
+.page--narrow { max-width: 420px; }
+.page { max-width: 960px; }
+.header { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin-bottom: 16px; }
+.header h1 { margin: 0; margin-right: auto; }
+.form label { display: flex; flex-direction: column; gap: 4px; font-size: 14px; }
+.form { display: flex; flex-direction: column; gap: 12px; }
+.row { display: flex; flex-wrap: wrap; gap: 8px; align-items: flex-end; }
+input, select, button { font: inherit; padding: 6px 10px; border-radius: 6px; border: 1px solid var(--border); background: var(--bg); color: var(--text); }
+button { cursor: pointer; background: #3b5bdb; color: #fff; border-color: #3b5bdb; }
+button.secondary { background: transparent; color: var(--text); border-color: var(--border); }
+button:disabled { opacity: .5; cursor: default; }
+.error { color: var(--down); }
+.ok { color: var(--ok); }
+.muted { color: var(--muted); }
+.list { list-style: none; padding: 0; margin: 0; }
+.list > li { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; padding: 6px 0; border-bottom: 1px solid var(--border); }
+.card { margin-bottom: 16px; }
+.map { display: grid; grid-template-columns: repeat(10, minmax(44px, 1fr)); gap: 6px; overflow-x: auto; }
+.spot { padding: 14px 0; border-radius: 6px; font-weight: 600; color: #fff; border: 2px solid transparent; transition: background-color .3s; }
+.spot:disabled { cursor: default; opacity: 1; }
+.spot--free, .dot--free::before { background: #2f9e44; }
+.spot--booked, .dot--booked::before { background: #f08c00; }
+.spot--occupied, .dot--occupied::before { background: #c92a2a; }
+.spot--selected { border-color: var(--text); }
+.legend { display: flex; gap: 16px; margin-bottom: 8px; font-size: 14px; }
+.dot::before { content: ''; display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 6px; }
+.badge { font-size: 13px; color: var(--muted); }
+.conn { font-size: 13px; padding: 2px 8px; border-radius: 10px; border: 1px solid var(--border); }
+.conn--online { color: var(--ok); }
+.conn--offline { color: var(--down); }

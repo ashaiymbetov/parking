@@ -1,30 +1,28 @@
-import { ApiError } from './api/client'
-import { useHealth } from './api/health'
+import { useAuth } from './auth'
+import { DriverPage } from './components/DriverPage'
+import { LoginPage } from './components/LoginPage'
+import { OperatorPage } from './components/OperatorPage'
+import { useRealtime } from './realtime'
+import { PARKING_TZ } from './time'
+
+const CONNECTION = { connecting: 'подключение…', online: 'онлайн', offline: 'нет связи' } as const
 
 function App() {
-  const health = useHealth()
+  const { session, logout } = useAuth()
+  const connection = useRealtime(session?.accessToken ?? null)
+  if (!session) return <LoginPage />
 
   return (
     <main className="page">
-      <h1>Parking</h1>
-      <section className="card" aria-live="polite">
-        <h2>Состояние сервиса</h2>
-        {health.isPending && <p>Проверяем…</p>}
-        {health.isError && (
-          <p className="status status--down" data-testid="health-status">
-            API недоступен
-            {health.error instanceof ApiError ? ` (HTTP ${health.error.status})` : ''}
-          </p>
-        )}
-        {health.data && (
-          <>
-            <p className="status status--ok" data-testid="health-status">
-              API: {health.data.status}, БД: {health.data.db}
-            </p>
-            <pre>{JSON.stringify(health.data, null, 2)}</pre>
-          </>
-        )}
-      </section>
+      <header className="header">
+        <h1>Парковка</h1>
+        <span className={`conn conn--${connection}`} data-testid="connection">{CONNECTION[connection]}</span>
+        <span className="muted">
+          {session.user.email} ({session.user.role === 'operator' ? 'оператор' : 'водитель'}) · время {PARKING_TZ}
+        </span>
+        <button type="button" className="secondary" onClick={logout}>Выйти</button>
+      </header>
+      {session.user.role === 'operator' ? <OperatorPage /> : <DriverPage />}
     </main>
   )
 }
