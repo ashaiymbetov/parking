@@ -54,7 +54,7 @@ flowchart LR
 | Краевой случай | Как закрываем |
 |---|---|
 | Гонка «проверили — свободно — вставили» в двух транзакциях | `EXCLUDE USING gist (spot_id WITH =, period WITH &&)` — вторая транзакция получает `23P01`, API отдаёт 409 `BOOKING_CONFLICT` (D-002). |
-| Параллельные вставки в EXCLUDE-ограничение | PostgreSQL может отклонить проигравшую транзакцию как `40P01 deadlock_detected`, а не `23P01` (проверено тестом `concurrency.e2e-spec.ts`). Сервис броней трактует оба кода как конфликт → 409 (D-024). |
+| Параллельные вставки в EXCLUDE-ограничение | PostgreSQL может отклонить транзакцию как `40P01 deadlock_detected`, причём и такую, чей интервал свободен (она ждала транзакцию, которая сама откатилась; найдено property-тестом). Поэтому создание брони всегда берёт `FOR UPDATE` строки места — брони одного места создаются по очереди, а `40P01` (одна машина на разных местах) повторяется до 3 раз (D-024). |
 | Смежные брони 10:00–11:00 и 11:00–12:00 | `tstzrange` полуоткрытый `[)`, пересечения нет — обе проходят. |
 | Отменённая / no-show / завершённая бронь не должна блокировать место | Ограничение частичное: `WHERE (status IN ('confirmed','checked_in'))`. |
 | Одна машина бронирует два места на одно время | Второе ограничение `EXCLUDE (car_id WITH =, period WITH &&)` с тем же условием → 409 `CAR_ALREADY_BOOKED` (D-009). |
@@ -222,7 +222,7 @@ stateDiagram-v2
 | `GET /me/cars` | driver | Мои машины. |
 | `POST /me/cars` | driver | Добавить номер (нормализуется: «а 123-вс» → `A123BC`). 409 `CAR_ALREADY_ADDED` (уже у меня) / `PLATE_TAKEN` (у другого профиля), 422 `INVALID_PLATE`. |
 | `DELETE /me/cars/:id` | driver | Удалить → 204. 409 `CAR_HAS_HISTORY`, если у машины есть брони или визиты (D-026). |
-| `GET /spots` | любой вошедший | Места: `{id, code, row, col}`. Состояние и `version` появятся с realtime. |
+| `GET /spots` | любой вошедший | Места: `{id, code, row, col, state, version}`. `state` считается на момент запроса той же SQL-функцией `spot_state_at`, что и снапшот; `version` — из `spot_state` (D-011, D-027). |
 | `GET /spots/availability?from&to` | любой вошедший | Места, которые можно забронировать на интервал (те же правила, что у `POST /bookings`). |
 | `POST /bookings` | driver | Создать бронь `{carId, spotId, from, to}` (ISO 8601 со смещением). 201 / 409 `BOOKING_CONFLICT` / 409 `CAR_ALREADY_BOOKED` / 409 `SPOT_OCCUPIED` / 422 `BOOKING_INVALID_PERIOD` (+ `reason`) / 404 `CAR_NOT_FOUND`, `SPOT_NOT_FOUND`. Пересечения ловит EXCLUDE, а не код. |
 | `GET /bookings` | driver | Мои брони (фильтр по статусу). |
