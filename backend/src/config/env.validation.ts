@@ -10,7 +10,21 @@ import {
   Max,
   Min,
   validateSync,
+  Validate,
+  ValidatorConstraint,
+  ValidatorConstraintInterface,
 } from 'class-validator';
+import { IANAZone } from 'luxon';
+
+@ValidatorConstraint({ name: 'ianaZone' })
+class IsIanaZone implements ValidatorConstraintInterface {
+  validate(value: unknown): boolean {
+    return typeof value === 'string' && IANAZone.isValidZone(value);
+  }
+  defaultMessage(): string {
+    return 'PARKING_TZ must be an IANA time zone, e.g. Asia/Bishkek';
+  }
+}
 
 export class EnvironmentVariables {
   @IsString()
@@ -35,6 +49,15 @@ export class EnvironmentVariables {
   @IsInt()
   @Min(60)
   JWT_TTL_SECONDS: number = 12 * 60 * 60;
+
+  /** Parking time zone: tariff day/night boundaries and display (D-003). */
+  @Validate(IsIanaZone)
+  PARKING_TZ: string = 'Asia/Bishkek';
+
+  /** Entry by booking is accepted until start + this; then no-show (D-004). */
+  @IsInt()
+  @Min(1)
+  NO_SHOW_GRACE_MIN: number = 15;
 
   /** "Starts soon" window: early entry by booking, SPOT_OCCUPIED check. */
   @IsInt()

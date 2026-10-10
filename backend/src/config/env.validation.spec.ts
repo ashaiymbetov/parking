@@ -49,3 +49,19 @@ describe('validateEnv: SEED_DEMO', () => {
     );
   });
 });
+
+describe('validateEnv: parking time and thresholds', () => {
+  const url = 'postgres://u:p@localhost:5432/db';
+
+  it('defaults to Asia/Bishkek and 15 minutes', () => {
+    const env = validateEnv({ DATABASE_URL: url });
+    expect(env.PARKING_TZ).toBe('Asia/Bishkek');
+    expect(env.NO_SHOW_GRACE_MIN).toBe(15);
+  });
+
+  it('rejects an unknown time zone', () => {
+    expect(() =>
+      validateEnv({ DATABASE_URL: url, PARKING_TZ: 'Mars/Olympus' }),
+    ).toThrow(/PARKING_TZ/);
+  });
+});
