@@ -4,10 +4,12 @@ import { BookingsModule } from './bookings/bookings.module';
 import { ClockModule } from './clock/clock.module';
 import { AppConfigModule } from './config/app-config.module';
 import { DatabaseModule } from './database/database.module';
+import { GateModule } from './gate/gate.module';
 import { HealthModule } from './health/health.module';
 import { ProfileModule } from './profile/profile.module';
 import { SeedModule } from './seed/seed.module';
 import { SpotsModule } from './spots/spots.module';
+import { VisitsModule } from './visits/visits.module';
 
 @Module({
   imports: [
@@ -20,6 +22,8 @@ import { SpotsModule } from './spots/spots.module';
     ProfileModule,
     SpotsModule,
     BookingsModule,
+    GateModule,
+    VisitsModule,
   ],
 })
 export class AppModule {}
