@@ -6,6 +6,7 @@ import {
   resetDomainData,
   spotByCode,
   TestApp,
+  TestUser,
 } from '../support/api';
 
 const NOW = '2026-10-05T08:00:00Z';
@@ -59,7 +60,10 @@ describe('API: concurrent bookings (property, real PostgreSQL)', () => {
       fc.asyncProperty(intervals, async (ivs) => {
         await resetDomainData(t.ds);
         // One driver per request, so only the spot can conflict.
-        const drivers = [];
+        const drivers: {
+          user: TestUser;
+          car: { id: string; plate: string };
+        }[] = [];
         for (let i = 0; i < ivs.length; i++) {
           const user = await createUser(t);
           const car = await addCar(t, user, `PROP${i}`);
