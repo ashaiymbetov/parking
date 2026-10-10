@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
+import { publish } from '../realtime/events';
 import { WorkerSettings } from './worker-settings';
 
 /**
@@ -41,14 +42,23 @@ export class ReminderTask {
       );
       const missed = created.filter((r) => r.status === 'skipped');
       if (missed.length > 0) {
-        await m.query(
+        const anomalies: { id: string; plate: string }[] = await m.query(
           `INSERT INTO anomalies (kind, booking_id, plate, details, created_at)
            SELECT 'reminder_missed', b.id, c.plate,
                   jsonb_build_object('endedAt', upper(b.period)), $2
            FROM bookings b JOIN cars c ON c.id = b.car_id
-           WHERE b.id = ANY($1)`,
+           WHERE b.id = ANY($1)
+           RETURNING id, plate`,
           [missed.map((r) => r.booking_id), now],
         );
+        for (const a of anomalies) {
+          await publish(m, {
+            type: 'anomaly.created',
+            id: a.id,
+            kind: 'reminder_missed',
+            plate: a.plate,
+          });
+        }
       }
       return created.length;
     });

@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
+import { publish } from '../realtime/events';
 import { refreshSpotState } from '../spots/spot-state';
 import { WorkerSettings } from './worker-settings';
 
@@ -48,8 +49,8 @@ export class NoShowTask {
       if (spot.length === 0) return false;
 
       // Re-check under the lock: a car may have checked in meanwhile.
-      const rows: { email: string }[] = await m.query(
-        `SELECT u.email::text AS email
+      const rows: { email: string; user_id: string }[] = await m.query(
+        `SELECT u.email::text AS email, b.user_id
          FROM bookings b JOIN users u ON u.id = b.user_id
          WHERE b.id = $1 AND b.status = 'confirmed'
            AND lower(b.period) + make_interval(mins => $3) <= $2
@@ -68,6 +69,12 @@ export class NoShowTask {
          ON CONFLICT (booking_id, kind) DO NOTHING`,
         [id, rows[0].email, now],
       );
+      await publish(m, {
+        type: 'booking.updated',
+        bookingId: id,
+        status: 'no_show',
+        userId: rows[0].user_id,
+      });
       await refreshSpotState(m, spotId, now, this.settings.soonMin);
       return true;
     });

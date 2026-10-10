@@ -6,6 +6,7 @@ import { AuthUser } from '../auth/auth-user';
 import { Clock } from '../clock/clock';
 import { DomainError } from '../common/domain-error';
 import { carNotFound } from '../profile/cars.service';
+import { publish } from '../realtime/events';
 import { refreshSpotState } from '../spots/spot-state';
 import { isDeadlock, mapBookingConflict } from './booking-errors';
 import { CreateBookingDto } from './dto/create-booking.dto';
@@ -203,6 +204,12 @@ export class BookingsService {
         `UPDATE bookings SET status = 'cancelled', cancelled_at = $2 WHERE id = $1`,
         [id, now],
       );
+      await publish(m, {
+        type: 'booking.updated',
+        bookingId: id,
+        status: 'cancelled',
+        userId: user.id,
+      });
       if (this.startsSoon(b.from, now)) {
         await refreshSpotState(m, own[0].spot_id, now, this.soonMin);
       }

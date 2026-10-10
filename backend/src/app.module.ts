@@ -7,6 +7,7 @@ import { DatabaseModule } from './database/database.module';
 import { GateModule } from './gate/gate.module';
 import { HealthModule } from './health/health.module';
 import { ProfileModule } from './profile/profile.module';
+import { RealtimeModule } from './realtime/realtime.module';
 import { SeedModule } from './seed/seed.module';
 import { SpotsModule } from './spots/spots.module';
 import { VisitsModule } from './visits/visits.module';
@@ -24,6 +25,7 @@ import { VisitsModule } from './visits/visits.module';
     BookingsModule,
     GateModule,
     VisitsModule,
+    RealtimeModule,
   ],
 })
 export class AppModule {}

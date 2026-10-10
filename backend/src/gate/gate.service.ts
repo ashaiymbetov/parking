@@ -6,6 +6,7 @@ import { Clock } from '../clock/clock';
 import { DomainError } from '../common/domain-error';
 import { pgError } from '../common/pg-error';
 import { normalizePlate } from '../plates/normalize-plate';
+import { publish } from '../realtime/events';
 import { refreshSpotState } from '../spots/spot-state';
 import { calculateCharge } from '../tariffing/calculate-charge';
 import { loadTariffs } from '../visits/tariffs';
@@ -159,9 +160,10 @@ export class GateService {
 
     const anomaly = rejection?.anomaly ?? accepted?.anomaly;
     if (anomaly) {
-      await m.query(
+      const created: { id: string }[] = await m.query(
         `INSERT INTO anomalies (kind, plate, gate_event_id, booking_id, details, created_at)
-         VALUES ($1, $2, $3, $4, $5::jsonb, $6)`,
+         VALUES ($1, $2, $3, $4, $5::jsonb, $6)
+         RETURNING id`,
         [
           anomaly.kind,
           plate,
@@ -171,6 +173,12 @@ export class GateService {
           now,
         ],
       );
+      await publish(m, {
+        type: 'anomaly.created',
+        id: created[0].id,
+        kind: anomaly.kind,
+        plate,
+      });
     }
     return event[0].response;
   }
@@ -195,9 +203,9 @@ export class GateService {
 
     // A confirmed booking whose entry window [start − early, start + grace)
     // contains now. Locked: the worker's no-show takes the same row lock.
-    const bookings: { id: string; spot_id: string }[] = car
+    const bookings: { id: string; spot_id: string; user_id: string }[] = car
       ? await m.query(
-          `SELECT id, spot_id FROM bookings
+          `SELECT id, spot_id, user_id FROM bookings
            WHERE car_id = $1 AND status = 'confirmed'
              AND lower(period) - make_interval(mins => $3) <= $2
              AND $2 < lower(period) + make_interval(mins => $4)
@@ -256,7 +264,21 @@ export class GateService {
         `UPDATE bookings SET status = 'checked_in', checked_in_at = $2 WHERE id = $1`,
         [booking.id, now],
       );
+      await publish(m, {
+        type: 'booking.updated',
+        bookingId: booking.id,
+        status: 'checked_in',
+        userId: booking.user_id,
+      });
     }
+    await publish(m, {
+      type: 'visit.updated',
+      visitId: visit[0].id,
+      status: 'open',
+      plate,
+      spotId: spot.id,
+      userId: car?.user_id ?? null,
+    });
     await refreshSpotState(m, spot.id, now, this.earlyMin);
 
     const body: EntryResult = {
@@ -304,10 +326,11 @@ export class GateService {
     const open: {
       id: string;
       spot_id: string;
+      user_id: string | null;
       booking_id: string | null;
       entered_at: Date;
     }[] = await m.query(
-      `SELECT id, spot_id, booking_id, entered_at FROM visits
+      `SELECT id, spot_id, user_id, booking_id, entered_at FROM visits
        WHERE plate = $1 AND exited_at IS NULL
        FOR UPDATE`,
       [plate],
@@ -341,12 +364,30 @@ export class GateService {
       ],
     );
     if (visit.booking_id) {
-      await m.query(
+      const done: { user_id: string }[] = await m.query(
         `UPDATE bookings SET status = 'completed'
-         WHERE id = $1 AND status = 'checked_in'`,
+         WHERE id = $1 AND status = 'checked_in'
+         RETURNING user_id`,
         [visit.booking_id],
       );
+      if (done.length > 0) {
+        await publish(m, {
+          type: 'booking.updated',
+          bookingId: visit.booking_id,
+          status: 'completed',
+          userId: done[0].user_id,
+        });
+      }
     }
+    await publish(m, {
+      type: 'visit.updated',
+      visitId: visit.id,
+      status: 'closed',
+      plate,
+      spotId: visit.spot_id,
+      userId: visit.user_id,
+      amountKop: charge.amountKop,
+    });
     await refreshSpotState(m, visit.spot_id, now, this.earlyMin);
 
     const rows: VisitRow[] = await m.query(`${SELECT_VISIT} WHERE v.id = $1`, [
