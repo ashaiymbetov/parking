@@ -5,14 +5,15 @@ import {
   OnApplicationShutdown,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { InjectDataSource } from '@nestjs/typeorm';
-import { DataSource } from 'typeorm';
 import { Clock } from '../clock/clock';
+import { NoShowTask } from './no-show.task';
+import { OutboxTask } from './outbox.task';
+import { ReminderTask } from './reminder.task';
+import { SpotSnapshotTask } from './spot-snapshot.task';
 
 /**
  * Polling loop. Every tick derives "what is due" from the database, so no
- * state lives in memory and a restart loses nothing. Domain tasks (no-show,
- * reminders, outbox, spot snapshot) will be added to `tick()` in later stages.
+ * state lives in memory and a restart loses nothing (ARCHITECTURE §5).
  */
 @Injectable()
 export class WorkerService
@@ -26,8 +27,11 @@ export class WorkerService
   private loopDone?: Promise<void>;
 
   constructor(
-    @InjectDataSource() private readonly dataSource: DataSource,
     private readonly clock: Clock,
+    private readonly noShows: NoShowTask,
+    private readonly reminders: ReminderTask,
+    private readonly outbox: OutboxTask,
+    private readonly snapshot: SpotSnapshotTask,
     config: ConfigService,
   ) {
     this.pollMs = config.getOrThrow<number>('WORKER_POLL_MS');
@@ -49,8 +53,18 @@ export class WorkerService
 
   /** One pass over all periodic tasks. Public so tests can drive it. */
   async tick(): Promise<void> {
-    await this.dataSource.query('SELECT 1');
-    this.logger.debug(`tick at ${this.clock.now().toISOString()}`);
+    const now = this.clock.now();
+    // Order matters: a released booking gets no reminder; emails created in
+    // this tick go out in this tick; the map reflects all of the above.
+    const released = await this.noShows.run(now);
+    const reminders = await this.reminders.run(now);
+    const sent = await this.outbox.run(now);
+    await this.snapshot.run(now);
+    if (released + reminders + sent > 0) {
+      this.logger.log(
+        `tick ${now.toISOString()}: released ${released}, reminders ${reminders}, emails ${sent}`,
+      );
+    }
   }
 
   private async loop(): Promise<void> {

@@ -2,6 +2,7 @@ import { Test } from '@nestjs/testing';
 import { Clock } from '../../src/clock/clock';
 import { FakeClock } from '../../src/clock/fake-clock';
 import { Mailer, SmtpMailer } from '../../src/mail/mailer';
+import { NoShowTask } from '../../src/worker/no-show.task';
 import { WorkerModule } from '../../src/worker/worker.module';
 import { WorkerService } from '../../src/worker/worker.service';
 import {
@@ -37,6 +38,7 @@ async function createWorker(clock: FakeClock, mailer: Mailer) {
     .compile();
   // No init(): the polling loop does not start, tests call tick() themselves.
   return {
+    moduleRef,
     worker: moduleRef.get(WorkerService),
     close: () => moduleRef.close(),
   };
@@ -189,6 +191,22 @@ describe('worker', () => {
         ['no_show', 'sent'],
       ]);
       expect(await mailpit.messages()).toHaveLength(1);
+    });
+
+    it('a car that checked in after the selection is not released (re-check under lock)', async () => {
+      const id = await booking();
+      // The worker selected the booking, then the car checked in before the
+      // worker took its lock.
+      await t.ds.query(
+        `UPDATE bookings SET status = 'checked_in', checked_in_at = $2 WHERE id = $1`,
+        [id, at(START + 14 * MIN)],
+      );
+      const released = await w.moduleRef
+        .get(NoShowTask)
+        .release(id, await spotByCode(t, 'A01'), at(START + 15 * MIN));
+      expect(released).toBe(false);
+      expect((await bookingRow(id)).status).toBe('checked_in');
+      expect(await outbox()).toEqual([]);
     });
 
     it('two workers ticking at once → one release, one email', async () => {

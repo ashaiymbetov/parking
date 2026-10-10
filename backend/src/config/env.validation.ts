@@ -59,6 +59,25 @@ export class EnvironmentVariables {
   @Min(1)
   NO_SHOW_GRACE_MIN: number = 15;
 
+  /** The reminder email goes this long before a booking ends (D-007). */
+  @IsInt()
+  @Min(1)
+  REMINDER_BEFORE_END_MIN: number = 10;
+
+  /** SMTP for outgoing mail: Mailpit in compose. */
+  @IsString()
+  @IsNotEmpty()
+  SMTP_HOST: string = 'localhost';
+
+  @IsInt()
+  @Min(1)
+  @Max(65535)
+  SMTP_PORT: number = 1025;
+
+  @IsString()
+  @IsNotEmpty()
+  MAIL_FROM: string = 'Parking <noreply@parking.local>';
+
   /** "Starts soon" window: early entry by booking, SPOT_OCCUPIED check. */
   @IsInt()
   @Min(0)

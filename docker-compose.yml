@@ -4,6 +4,9 @@ x-backend-env: &backend-env
   DATABASE_URL: postgres://parking:parking@postgres:5432/parking
   PORT: "3000"
   WORKER_POLL_MS: "5000"
+  # Outgoing mail goes to Mailpit (web UI on :8025).
+  SMTP_HOST: mailpit
+  SMTP_PORT: "1025"
   # Dev-only secret; set your own outside local runs.
   JWT_SECRET: dev-only-jwt-secret-change-me
 
@@ -58,6 +61,8 @@ services:
       # The API applies migrations on start; the worker waits for it.
       backend:
         condition: service_healthy
+      mailpit:
+        condition: service_started
 
   frontend:
     build: ./frontend
