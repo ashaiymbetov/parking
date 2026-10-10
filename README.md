@@ -4,7 +4,7 @@
 
 ## Статус
 
-**Backend готов, кроме realtime-рассылки.** Работают API входа, профиля водителя, бронирования, схемы мест, симулятора шлагбаума со счётом при выезде, истории визитов и счетов. Worker снимает брони, на которые не заехали, шлёт напоминания в Mailpit и обновляет состояние мест по времени. Рассылки в браузер (socket.io) и UI пока нет.
+**Backend готов полностью, UI ещё нет.** Работают API входа, профиля водителя, бронирования, схемы мест, симулятора шлагбаума со счётом, истории; worker (снятие брони, напоминания, письма в Mailpit); realtime-рассылка событий по socket.io. Интерфейса в браузере пока нет.
 
 | Что | Состояние |
 |---|---|
@@ -19,7 +19,8 @@
 | Расчёт счёта: поминутно, день/ночь, версии тарифа, переход на летнее время | работает: чистая функция `backend/src/tariffing/`, покрыта примерами и property-тестами |
 | API: вход (JWT, роли), профиль водителя и машины, бронирование и отмена, схема мест с состоянием и `version` | работает, покрыто e2e-тестами `backend/test/api/` |
 | API: симулятор шлагбаума (заезд/выезд, `Idempotency-Key`), счёт при выезде, история визитов и счетов, журналы аномалий и шлагбаума для оператора | работает, покрыто e2e-тестами `backend/test/api/gate.e2e-spec.ts`, `history.e2e-spec.ts` |
-| Realtime (socket.io); UI; закрытие «застрявшего» визита оператором (force-close); управляемое время для демо (`POST /test/clock`) | не сделано — план в [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) |
+| Realtime: socket.io, JWT в handshake, комнаты `lot` / `user:{id}` / `operators`; события `spot.updated`, `booking.updated`, `visit.updated`, `anomaly.created` из API и worker'а через PostgreSQL LISTEN/NOTIFY | работает, покрыто `backend/test/realtime/realtime.e2e-spec.ts` |
+| UI; E2E в браузере (Playwright) | не сделано |
 
 ## Требования
 
@@ -78,6 +79,7 @@ npm run test:e2e    # e2e на реальном PostgreSQL (testcontainers, ну
 | Профиль водителя: почта, номера машин | `test/api/auth.e2e-spec.ts`, `test/api/cars.e2e-spec.ts` («а123вс» и «A123BC» — одна машина, номер у одного профиля), `src/plates/normalize-plate.spec.ts`; БД: `test/schema/users-cars.e2e-spec.ts` | работает |
 | Бронь места: интервал, номер машины | `test/api/bookings.e2e-spec.ts`: создание, правила периода (15 мин…24 ч, не в прошлом, ≤ 7 дней), одна машина — одна бронь на время, отмена, чужие брони не видны; `src/bookings/booking-period.spec.ts` | работает |
 | Схема парковки с местами и их состоянием: свободно, забронировано, занято | `test/schema/spot-state.e2e-spec.ts` (одна SQL-функция: `occupied` > `booked` > `free`, окно 15 мин, смена `version` только при реальном изменении), `test/api/spots.e2e-spec.ts` (`GET /api/spots` с `state` и `version`, состояние следует за `Clock`, бронь и отмена шлют `spot.updated` через NOTIFY только после COMMIT) | API — работает; рассылка в браузер (socket.io) и UI — не сделано |
+| «Занятость мест на схеме меняется у всех, кто её смотрит, без обновления страницы» | `backend/test/realtime/realtime.e2e-spec.ts`: два socket.io-клиента получают `spot.updated` с новой `version` после заезда через шлагбаум и после снятия брони отдельным процессом worker'а (путь worker → NOTIFY → API → socket); откаченная транзакция события не даёт, закоммиченная — даёт; личные события не уходят чужим; после обрыва LISTEN-соединения клиенты получают `sync.required`, и события снова доходят. В браузере — не сделано (нет UI) | сервер — работает; браузер — не сделано |
 | История визитов и счетов | `backend/test/api/history.e2e-spec.ts`: свои визиты и счета с разбивкой по тарифу, чужой id → 404, гостевые визиты не видны водителям; оператор видит все визиты и журналы, водитель получает 403 | работает |
 | Почта эмулируется | Mailpit в compose (http://localhost:8025); тот же образ в тестах worker'а через testcontainers | работает |
 | Остальные требования задания | план тестов — [`docs/ARCHITECTURE.md` §7](docs/ARCHITECTURE.md#7-план-доказательства) | не сделано |
@@ -91,3 +93,9 @@ npm run test:e2e    # e2e на реальном PostgreSQL (testcontainers, ну
 ## Чем делали
 
 Claude Code, модель opus 5.5. Генераторы: Nest CLI 11 (backend), шаблон Vite `react-ts` (frontend) — см. D-016.
+
+
+## Что не делали и почему
+
+- `POST /test/clock` (управляемое время, D-015) — не сделано ради срока. Для демо пороги задаются через env: `NO_SHOW_GRACE_MIN`, `REMINDER_BEFORE_END_MIN`, `EARLY_ENTRY_MIN`, `WORKER_POLL_MS`. В тестах время управляется `FakeClock`.
+- Закрытие «застрявшего» визита оператором (force-close) — не сделано ради срока.

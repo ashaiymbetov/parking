@@ -257,8 +257,10 @@ socket.io, JWT передаётся в handshake (`auth.token`). Комнаты:
 |---|---|---|---|
 | `spot.updated` | `{spotId, state, version}` | `lot` | Любая мутация, меняющая состояние места (бронь в ближайшие 15 мин, отмена, заезд, выезд, no-show), и тик worker'а при смене состояния по времени. |
 | `booking.updated` | `{bookingId, status}` | `user:{id}` | `checked_in`, `completed`, `cancelled`, `no_show`. |
-| `visit.updated` | `{visitId, status, amountKop?}` | `user:{id}`, `operators` | Заезд, выезд (с суммой), force-close. |
+| `visit.updated` | `{visitId, status: open\|closed, plate, spotId, amountKop?}` | `user:{id}` (если не гость), `operators` | Заезд, выезд (с суммой), force-close. |
 | `anomaly.created` | `{id, kind, plate}` | `operators` | Новая аномалия. |
+| `sync.required` | `{}` | `lot` | API восстановил LISTEN-соединение: события за время обрыва потеряны, клиент перезапрашивает данные. |
+| `session.ready` | `{userId, role}` | сокету | Комнаты назначены — с этого момента клиент ничего не пропускает. |
 
 Путь события: доменная транзакция → `pg_notify('parking_events', json)` → COMMIT → LISTEN-соединение API → `server.to(room).emit(...)`.
 
