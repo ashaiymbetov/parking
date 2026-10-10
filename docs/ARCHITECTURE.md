@@ -216,18 +216,18 @@ stateDiagram-v2
 
 | Метод и путь | Роль | Описание |
 |---|---|---|
-| `POST /auth/register` | — | Регистрация водителя (email, пароль). |
-| `POST /auth/login` | — | Вход, выдаёт JWT. |
-| `GET /me` | driver | Профиль: email, машины. |
+| `POST /auth/register` | — | Регистрация водителя (email, пароль от 8 символов) → `{accessToken, user}`. 409 `EMAIL_TAKEN`. Операторы — только из сида. |
+| `POST /auth/login` | — | Вход → `{accessToken, user}` (JWT на `JWT_TTL_SECONDS`, по умолчанию 12 ч). 401 `INVALID_CREDENTIALS` — одинаково для неизвестного email и неверного пароля. |
+| `GET /me` | любой вошедший | Профиль: id, email, роль, машины. |
 | `GET /me/cars` | driver | Мои машины. |
-| `POST /me/cars` | driver | Добавить номер (нормализуется). 409 `PLATE_TAKEN`, 422 `INVALID_PLATE`. |
-| `DELETE /me/cars/:id` | driver | Удалить. 409, если есть активная бронь или открытый визит. |
-| `GET /spots` | любой вошедший | Схема: места с состоянием и `version`. |
-| `GET /spots/availability?from&to` | driver | Свободные под интервал места. |
-| `POST /bookings` | driver | Создать бронь `{carId, spotId, from, to}`. 201 / 409 `BOOKING_CONFLICT` / 409 `CAR_ALREADY_BOOKED` / 409 `SPOT_OCCUPIED` / 422 `BOOKING_INVALID_PERIOD`. |
+| `POST /me/cars` | driver | Добавить номер (нормализуется: «а 123-вс» → `A123BC`). 409 `CAR_ALREADY_ADDED` (уже у меня) / `PLATE_TAKEN` (у другого профиля), 422 `INVALID_PLATE`. |
+| `DELETE /me/cars/:id` | driver | Удалить → 204. 409 `CAR_HAS_HISTORY`, если у машины есть брони или визиты (D-026). |
+| `GET /spots` | любой вошедший | Места: `{id, code, row, col}`. Состояние и `version` появятся с realtime. |
+| `GET /spots/availability?from&to` | любой вошедший | Места, которые можно забронировать на интервал (те же правила, что у `POST /bookings`). |
+| `POST /bookings` | driver | Создать бронь `{carId, spotId, from, to}` (ISO 8601 со смещением). 201 / 409 `BOOKING_CONFLICT` / 409 `CAR_ALREADY_BOOKED` / 409 `SPOT_OCCUPIED` / 422 `BOOKING_INVALID_PERIOD` (+ `reason`) / 404 `CAR_NOT_FOUND`, `SPOT_NOT_FOUND`. Пересечения ловит EXCLUDE, а не код. |
 | `GET /bookings` | driver | Мои брони (фильтр по статусу). |
 | `GET /bookings/:id` | driver | Бронь. |
-| `POST /bookings/:id/cancel` | driver | Отмена до начала. 409 `BOOKING_NOT_CANCELLABLE`. |
+| `POST /bookings/:id/cancel` | driver | Отмена `confirmed`-брони до её начала (D-026). 409 `BOOKING_NOT_CANCELLABLE`. |
 | `GET /visits` | driver | История моих визитов со счетами. |
 | `GET /visits/:id` | driver | Визит. |
 | `GET /invoices` | driver | Мои счета. |

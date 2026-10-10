@@ -4,6 +4,8 @@ x-backend-env: &backend-env
   DATABASE_URL: postgres://parking:parking@postgres:5432/parking
   PORT: "3000"
   WORKER_POLL_MS: "5000"
+  # Dev-only secret; set your own outside local runs.
+  JWT_SECRET: dev-only-jwt-secret-change-me
 
 services:
   postgres:
