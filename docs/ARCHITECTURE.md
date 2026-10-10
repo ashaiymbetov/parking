@@ -228,16 +228,16 @@ stateDiagram-v2
 | `GET /bookings` | driver | Мои брони (фильтр по статусу). |
 | `GET /bookings/:id` | driver | Бронь. |
 | `POST /bookings/:id/cancel` | driver | Отмена `confirmed`-брони до её начала (D-026). 409 `BOOKING_NOT_CANCELLABLE`. |
-| `GET /visits` | driver | История моих визитов со счетами. |
-| `GET /visits/:id` | driver | Визит. |
-| `GET /invoices` | driver | Мои счета. |
-| `GET /invoices/:id` | driver | Счёт с разбивкой по тарифам. |
-| `POST /gate/entry` | operator | Симулятор: заезд `{plate}`, заголовок `Idempotency-Key`. 201 `{visitId, spotCode, bookingId?}` / 409 `ALREADY_INSIDE` / 409 `NO_FREE_SPOT` / 422 `INVALID_PLATE`. |
+| `GET /visits` | driver | Мои визиты (новые первыми) со счётом: `{id, plate, spot, bookingId, enteredAt, exitedAt, closeReason, invoice}`. Гостевые визиты не видны никому из водителей. |
+| `GET /visits/:id` | driver | Визит. Чужой или некорректный id → 404 `VISIT_NOT_FOUND`. |
+| `GET /invoices` | driver | Мои счета: `{id, visitId, plate, minutes, amountKop, segments, createdAt}`. |
+| `GET /invoices/:id` | driver | Счёт с разбивкой по тарифам (`segments` из `calculateCharge`). Чужой → 404 `INVOICE_NOT_FOUND`. |
+| `POST /gate/entry` | operator | Симулятор: заезд `{plate}`, необязательный заголовок `Idempotency-Key`. 201 `{visitId, plate, spot, bookingId, enteredAt}` / 409 `ALREADY_INSIDE` / 409 `NO_FREE_SPOT` / 422 `INVALID_PLATE` / 422 `IDEMPOTENCY_KEY_REUSED` (D-028). |
 | `POST /gate/exit` | operator | Симулятор: выезд `{plate}`, `Idempotency-Key`. 200 `{visit, invoice}` / 409 `NOT_INSIDE` / 422 `INVALID_PLATE`. |
-| `GET /operator/visits?status=open` | operator | Все визиты. |
-| `POST /operator/visits/:id/force-close` | operator | Закрыть «застрявший» визит. |
-| `GET /operator/anomalies` | operator | Журнал аномалий. |
-| `GET /operator/gate-events` | operator | Журнал шлагбаума. |
+| `GET /operator/visits?status=open\|closed` | operator | Все визиты, включая гостевые (последние 500). |
+| `POST /operator/visits/:id/force-close` | operator | Закрыть «застрявший» визит. **Не сделано** (отложено ради срока). |
+| `GET /operator/anomalies` | operator | Журнал аномалий, новые первыми. |
+| `GET /operator/gate-events` | operator | Журнал обращений к шлагбауму (в том числе отклонённых), новые первыми. |
 | `GET /tariffs` | любой | Действующий и будущие тарифы. |
 | `GET /health` | — | Проверка живости (API + БД). |
 | `POST /test/clock` | — | Только при `CLOCK_MODE=controllable`: установить/сдвинуть время для E2E и демо (D-015). В обычном режиме маршрут не регистрируется. |
