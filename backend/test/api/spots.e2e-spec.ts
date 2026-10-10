@@ -155,9 +155,10 @@ describe('API: spots with state and version (D-011)', () => {
       events = [];
       listener = await connect();
       listener.on('notification', (n: Notification) => {
-        if (n.channel === 'parking_events' && n.payload) {
-          events.push(JSON.parse(n.payload) as (typeof events)[number]);
-        }
+        if (n.channel !== 'parking_events' || !n.payload) return;
+        const event = JSON.parse(n.payload) as (typeof events)[number];
+        // The channel also carries booking/visit events (realtime stage).
+        if (event.type === 'spot.updated') events.push(event);
       });
       await listener.query('LISTEN parking_events');
     });

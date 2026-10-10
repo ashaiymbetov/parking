@@ -33,7 +33,12 @@ export async function createTestApp(now: string): Promise<TestApp> {
     clock,
     ds: app.get(DataSource),
     http: () => request(app.getHttpServer()),
-    close: () => app.close(),
+    // Leave the database as found: other files (e.g. the demo seed test)
+    // must not depend on which API test happened to run before them.
+    close: async () => {
+      await resetDomainData(app.get(DataSource));
+      await app.close();
+    },
   };
 }
 

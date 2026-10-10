@@ -323,6 +323,20 @@ describe('realtime (socket.io over LISTEN/NOTIFY)', () => {
     expect(a.of('anomaly.created')).toEqual([]);
   });
 
+  it('after the LISTEN connection drops: sync.required, then events flow again', async () => {
+    const a = await connect(alice.token);
+    const killed: { n: number }[] = await t.ds.query(
+      `SELECT count(pg_terminate_backend(pid))::int AS n
+       FROM pg_stat_activity
+       WHERE query = 'LISTEN parking_events' AND pid <> pg_backend_pid()`,
+    );
+    expect(killed[0].n).toBeGreaterThanOrEqual(1);
+
+    await eventually(() => expect(a.of('sync.required')).toEqual([{}]), 5000);
+    await gate('entry', 'A123BC').expect(201);
+    await eventually(() => expect(a.of('spot.updated')).toHaveLength(1));
+  });
+
   it('a refused request changes nothing on the map', async () => {
     const a = await connect(alice.token);
     await gate('exit', 'A123BC').expect(409);
