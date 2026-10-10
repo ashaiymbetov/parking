@@ -5,8 +5,9 @@ import { DataSource, EntityManager } from 'typeorm';
 import { AuthUser } from '../auth/auth-user';
 import { Clock } from '../clock/clock';
 import { DomainError } from '../common/domain-error';
-import { pgError } from '../common/pg-error';
 import { carNotFound } from '../profile/cars.service';
+import { refreshSpotState } from '../spots/spot-state';
+import { isDeadlock, mapBookingConflict } from './booking-errors';
 import { CreateBookingDto } from './dto/create-booking.dto';
 import { parsePeriod } from './period';
 
@@ -52,20 +53,30 @@ function toView(r: BookingRow): BookingView {
   };
 }
 
+/** Bounded retries after 40P01 (D-024). */
+const MAX_DEADLOCK_ATTEMPTS = 3;
+
 const notFound = () =>
   new DomainError(404, 'BOOKING_NOT_FOUND', 'Бронь не найдена');
 
 @Injectable()
 export class BookingsService {
-  /** A booking starting this soon needs the spot to be physically free (D-008). */
-  private readonly nearMs: number;
+  /**
+   * A booking starting this soon needs the spot to be physically free
+   * (D-008) and makes the spot "booked" on the map (D-011).
+   */
+  private readonly soonMin: number;
 
   constructor(
     @InjectDataSource() private readonly ds: DataSource,
     private readonly clock: Clock,
     config: ConfigService,
   ) {
-    this.nearMs = config.getOrThrow<number>('EARLY_ENTRY_MIN') * 60_000;
+    this.soonMin = config.getOrThrow<number>('EARLY_ENTRY_MIN');
+  }
+
+  private startsSoon(from: Date, now: Date): boolean {
+    return from.getTime() < now.getTime() + this.soonMin * 60_000;
   }
 
   /**
@@ -76,50 +87,71 @@ export class BookingsService {
   async create(user: AuthUser, dto: CreateBookingDto): Promise<BookingView> {
     const now = this.clock.now();
     const { from, to } = parsePeriod(dto.from, dto.to, now);
-    const startsSoon = from.getTime() < now.getTime() + this.nearMs;
 
-    try {
-      return await this.ds.transaction(async (m) => {
-        const car: unknown[] = await m.query(
-          `SELECT 1 FROM cars WHERE id = $1 AND user_id = $2`,
-          [dto.carId, user.id],
+    for (let attempt = 1; ; attempt++) {
+      try {
+        return await this.ds.transaction((m) =>
+          this.insert(m, user, dto, from, to, now),
         );
-        if (car.length === 0) throw carNotFound();
-
-        // Lock the spot only when a car on it right now matters: gate entry
-        // takes the same lock, so "check visit, then insert" cannot race.
-        const spot: unknown[] = await m.query(
-          `SELECT 1 FROM spots WHERE id = $1 AND is_active ${startsSoon ? 'FOR UPDATE' : ''}`,
-          [dto.spotId],
-        );
-        if (spot.length === 0) {
-          throw new DomainError(404, 'SPOT_NOT_FOUND', 'Место не найдено');
-        }
-        if (startsSoon) {
-          const occupied: unknown[] = await m.query(
-            `SELECT 1 FROM visits WHERE spot_id = $1 AND exited_at IS NULL`,
-            [dto.spotId],
-          );
-          if (occupied.length > 0) {
-            throw new DomainError(
-              409,
-              'SPOT_OCCUPIED',
-              'На месте сейчас стоит машина — выберите другое место или более позднее время',
-            );
-          }
-        }
-
-        const inserted: { id: string }[] = await m.query(
-          `INSERT INTO bookings (user_id, car_id, spot_id, period)
-           VALUES ($1, $2, $3, tstzrange($4, $5, '[)'))
-           RETURNING id`,
-          [user.id, dto.carId, dto.spotId, from, to],
-        );
-        return this.findOwn(m, user.id, inserted[0].id);
-      });
-    } catch (err) {
-      throw mapBookingConflict(err);
+      } catch (err) {
+        // A deadlock victim may well have been free: the transaction it
+        // waited for can itself fail. Retry, so the answer is exact (D-024).
+        if (isDeadlock(err) && attempt < MAX_DEADLOCK_ATTEMPTS) continue;
+        throw mapBookingConflict(err);
+      }
     }
+  }
+
+  private async insert(
+    m: EntityManager,
+    user: AuthUser,
+    dto: CreateBookingDto,
+    from: Date,
+    to: Date,
+    now: Date,
+  ): Promise<BookingView> {
+    const car: unknown[] = await m.query(
+      `SELECT 1 FROM cars WHERE id = $1 AND user_id = $2`,
+      [dto.carId, user.id],
+    );
+    if (car.length === 0) throw carNotFound();
+
+    // Bookings of one spot are created one at a time: with concurrent
+    // inserts into EXCLUDE, PostgreSQL may abort a non-conflicting one as a
+    // deadlock victim (D-024). Gate entry takes the same lock, so "check the
+    // visit, then insert" cannot race either.
+    const spot: unknown[] = await m.query(
+      `SELECT 1 FROM spots WHERE id = $1 AND is_active FOR UPDATE`,
+      [dto.spotId],
+    );
+    if (spot.length === 0) {
+      throw new DomainError(404, 'SPOT_NOT_FOUND', 'Место не найдено');
+    }
+
+    const soon = this.startsSoon(from, now);
+    if (soon) {
+      const occupied: unknown[] = await m.query(
+        `SELECT 1 FROM visits WHERE spot_id = $1 AND exited_at IS NULL`,
+        [dto.spotId],
+      );
+      if (occupied.length > 0) {
+        throw new DomainError(
+          409,
+          'SPOT_OCCUPIED',
+          'На месте сейчас стоит машина — выберите другое место или более позднее время',
+        );
+      }
+    }
+
+    const inserted: { id: string }[] = await m.query(
+      `INSERT INTO bookings (user_id, car_id, spot_id, period, created_at)
+       VALUES ($1, $2, $3, tstzrange($4, $5, '[)'), $6)
+       RETURNING id`,
+      [user.id, dto.carId, dto.spotId, from, to, now],
+    );
+    // Only a booking starting soon can change what the map shows.
+    if (soon) await refreshSpotState(m, dto.spotId, now, this.soonMin);
+    return this.findOwn(m, user.id, inserted[0].id);
   }
 
   async list(user: AuthUser, status?: string): Promise<BookingView[]> {
@@ -140,14 +172,24 @@ export class BookingsService {
   async cancel(user: AuthUser, id: string): Promise<BookingView> {
     const now = this.clock.now();
     return this.ds.transaction(async (m) => {
-      const rows: { status: string; from: Date }[] = await m.query(
-        `SELECT status, lower(period) AS "from" FROM bookings
-         WHERE id = $1 AND user_id = $2
-         FOR UPDATE`,
+      const own: { spot_id: string }[] = await m.query(
+        `SELECT spot_id FROM bookings WHERE id = $1 AND user_id = $2`,
         [id, user.id],
       );
+      if (own.length === 0) throw notFound();
+      // Same lock order as create (spot, then bookings) — no deadlock with
+      // an INSERT waiting on this booking's row in the EXCLUDE index.
+      await m.query(`SELECT 1 FROM spots WHERE id = $1 FOR UPDATE`, [
+        own[0].spot_id,
+      ]);
+
+      const rows: { status: string; from: Date }[] = await m.query(
+        `SELECT status, lower(period) AS "from" FROM bookings
+         WHERE id = $1
+         FOR UPDATE`,
+        [id],
+      );
       const b = rows[0];
-      if (!b) throw notFound();
       if (b.status !== 'confirmed' || now.getTime() >= b.from.getTime()) {
         throw new DomainError(
           409,
@@ -161,6 +203,9 @@ export class BookingsService {
         `UPDATE bookings SET status = 'cancelled', cancelled_at = $2 WHERE id = $1`,
         [id, now],
       );
+      if (this.startsSoon(b.from, now)) {
+        await refreshSpotState(m, own[0].spot_id, now, this.soonMin);
+      }
       return this.findOwn(m, user.id, id);
     });
   }
@@ -177,31 +222,4 @@ export class BookingsService {
     if (rows.length === 0) throw notFound();
     return toView(rows[0]);
   }
-}
-
-/**
- * EXCLUDE violations become user-facing conflicts. Concurrent inserts can
- * also surface as a deadlock (40P01) — same meaning, same answer (D-024).
- */
-function mapBookingConflict(err: unknown): unknown {
-  const pg = pgError(err);
-  if (!pg) return err;
-  if (pg.code === '23P01' && pg.constraint === 'bookings_no_overlap_per_car') {
-    return new DomainError(
-      409,
-      'CAR_ALREADY_BOOKED',
-      'У этой машины уже есть бронь на пересекающееся время',
-    );
-  }
-  if (
-    (pg.code === '23P01' && pg.constraint === 'bookings_no_overlap_per_spot') ||
-    pg.code === '40P01'
-  ) {
-    return new DomainError(
-      409,
-      'BOOKING_CONFLICT',
-      'Место уже забронировано на это время — выберите другое время или место',
-    );
-  }
-  return err;
 }
