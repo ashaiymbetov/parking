@@ -60,7 +60,7 @@ npm test            # юнит-тесты
 npm run test:e2e    # e2e на реальном PostgreSQL (testcontainers, нужен Docker)
 ```
 
-С БД из compose вместо testcontainers: `DATABASE_URL=postgres://parking:parking@localhost:5433/parking npm run test:e2e`.
+С БД из compose вместо testcontainers: `DATABASE_URL=postgres://parking:parking@localhost:5433/parking npm run test:e2e` — тесты пересоздают на том же сервере отдельную БД `parking_e2e`, данные в `parking` не трогаются.
 
 ## Доказательства
 
