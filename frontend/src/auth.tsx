@@ -11,12 +11,16 @@ interface AuthValue {
   logout(): void
 }
 
+/**
+ * Per tab (sessionStorage, D-032): an operator and a driver can work in two
+ * tabs of one browser, and a reload keeps each tab's own account.
+ */
 const KEY = 'parking.session'
 const AuthContext = createContext<AuthValue | null>(null)
 
 function load(): Session | null {
   try {
-    const raw = localStorage.getItem(KEY)
+    const raw = sessionStorage.getItem(KEY)
     return raw ? (JSON.parse(raw) as Session) : null
   } catch {
     return null
@@ -28,7 +32,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(() => load())
 
   const logout = useCallback(() => {
-    try { localStorage.removeItem(KEY) } catch { /* private mode */ }
+    try { sessionStorage.removeItem(KEY) } catch { /* private mode */ }
     setApiToken(null)
     qc.clear()
     setSession(null)
@@ -39,7 +43,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const start = useCallback(async (path: string, email: string, password: string) => {
     const s = await api<Session>(path, { method: 'POST', body: { email, password } })
-    try { localStorage.setItem(KEY, JSON.stringify(s)) } catch { /* private mode */ }
+    try { sessionStorage.setItem(KEY, JSON.stringify(s)) } catch { /* private mode */ }
     qc.clear()
     setSession(s)
   }, [qc])
