@@ -23,10 +23,15 @@ services:
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U parking -d parking"]
-      interval: 2s
-      timeout: 3s
-      retries: 30
+      # Over TCP: during first-time init the entrypoint runs a temporary
+      # server on the unix socket only, which must not count as ready.
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U parking -d parking"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      # Initializing an empty volume took ~70 s on Docker Desktop for
+      # Windows; failed checks during this period are not counted.
+      start_period: 120s
 
   mailpit:
     image: axllent/mailpit:v1.31.4
@@ -48,10 +53,11 @@ services:
         condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3000/api/health || exit 1"]
-      interval: 3s
-      timeout: 3s
-      retries: 20
-      start_period: 5s
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      # First start applies migrations and hashes demo passwords (scrypt).
+      start_period: 120s
 
   worker:
     build: ./backend
