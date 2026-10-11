@@ -1,0 +1,15 @@
+# Short thresholds for a live demo (CLAUDE.md, principle 10). The base file
+# keeps the values from the task (15 min no-show, reminder 10 min before end).
+#
+#   docker compose -f docker-compose.yml -f docker-compose.demo.yml up -d
+#
+# Back to the task values: docker compose up -d
+x-demo-env: &demo-env
+  NO_SHOW_GRACE_MIN: "1"        # a booking nobody arrived for is released after 1 min
+  REMINDER_BEFORE_END_MIN: "15" # a 15-minute booking gets its reminder at its start
+
+services:
+  backend:
+    environment: *demo-env
+  worker:
+    environment: *demo-env
