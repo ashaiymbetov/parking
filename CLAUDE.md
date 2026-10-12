@@ -29,7 +29,7 @@
 - Env backend: `DATABASE_URL`, `JWT_SECRET` (нужен API; в compose — dev-значение), `JWT_TTL_SECONDS`, `PARKING_TZ` (по умолчанию `Asia/Bishkek`), `EARLY_ENTRY_MIN` (15), `NO_SHOW_GRACE_MIN` (15), `REMINDER_BEFORE_END_MIN` (10), `WORKER_POLL_MS` (5000), `SMTP_HOST` / `SMTP_PORT` (в compose — `mailpit:1025`), `MAIL_FROM`, `SEED_DEMO` — проверяются при старте (`src/config/env.validation.ts`), пример — `backend/.env.example`.
 - Демо с короткими порогами: `docker compose -f docker-compose.yml -f docker-compose.demo.yml up -d`.
 - Демо-данные: создаются при старте backend, если `SEED_DEMO=true` (в compose включено); вручную — `npm run seed` в `backend/` (нужны `DATABASE_URL` и применённые миграции). Учётки: `operator@parking.local`, `driver1@parking.local`, `driver2@parking.local`, пароль `parking123`.
-- E2E (Playwright, один сценарий на две вкладки): в `frontend/` — `npm run test:e2e` против запущенного стека (`E2E_BASE_URL`, по умолчанию http://localhost:8080).
+- E2E (Playwright, два сценария: два отдельных браузера и две вкладки одного браузера): в `frontend/` — `npm run test:e2e` против запущенного стека (`E2E_BASE_URL`, по умолчанию http://localhost:8080).
 
 ## Архитектурные принципы (не нарушать)
 1. **Деньги только целыми копейками.** В БД — `integer` (не `bigint`: драйвер pg отдаёт bigint строкой) или `bigint` с явным трансформером в number. Никаких float, никаких `0.1 + 0.2` в расчётах.
